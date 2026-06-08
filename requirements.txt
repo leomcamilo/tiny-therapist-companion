@@ -1,0 +1,8 @@
+transformers>=4.44.2
+torch>=2.1.0
+gradio>=5.0.0
+accelerate>=0.25.0
+sentencepiece
+protobuf
+llama-cpp-python
+huggingface_hub

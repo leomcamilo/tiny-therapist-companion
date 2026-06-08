@@ -1,0 +1,26 @@
+# Fine-tuning configuration for Nemotron-Nano-4B
+# Build Small Hackathon 2026
+
+model:
+  base_model: "nvidia/Llama-3.1-Nemotron-Nano-4B-v1.1"
+  model_type: "causal_lm"
+  max_seq_length: 2048
+
+training:
+  output_dir: "./fine-tuning/output"
+  num_train_epochs: 3
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 2.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  lr_scheduler_type: "cosine"
+  bf16: true
+  logging_steps: 10
+  save_strategy: "epoch"
+  evaluation_strategy: "epoch"
+
+dataset:
+  train_file: "./fine-tuning/dataset/train.jsonl"
+  val_file: "./fine-tuning/dataset/val.jsonl"
+  format: "conversational"  # messages format for chat models
