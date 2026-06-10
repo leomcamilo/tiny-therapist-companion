@@ -46,8 +46,10 @@ fine-tuning/output/
 fine-tuning/checkpoints/
 fine-tuning/wandb/
 
-# Data (can be large)
-fine-tuning/dataset/*.jsonl
+# Training outputs (too large for git)
+fine-tuning/output/
+fine-tuning/checkpoints/
+fine-tuning/wandb/
 
 # Environment
 .env

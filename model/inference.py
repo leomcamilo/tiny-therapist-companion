@@ -1,80 +1,124 @@
 """
 Model inference for Tiny Therapist Companion.
-Supports both transformers and llama.cpp backends.
+Supports llama.cpp (default) and transformers backends.
+Lazy loading with thread-safe singleton pattern.
 """
 
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+import os
+import threading
+from typing import Optional
+
+BACKEND = os.environ.get("BACKEND", "llama_cpp")
 
 MODEL_ID = "nvidia/Llama-3.1-Nemotron-Nano-4B-v1.1"
 GGUF_MODEL_ID = "bartowski/Llama-3.1-Nemotron-Nano-4B-v1.1-GGUF"
 
-_device = None
+_lock = threading.Lock()
 _model = None
 _tokenizer = None
+_loaded = False
 
 
-def load_model(backend="transformers", quantization=None):
-    """Load the model. backend: 'transformers' or 'llama_cpp'."""
-    global _model, _tokenizer, _device
+def _load_llama_cpp():
+    """Load model via llama-cpp-python (GGUF quantized)."""
+    global _model, _tokenizer
+    from llama_cpp import Llama
 
-    _device = "cuda" if torch.cuda.is_available() else "cpu"
+    _model = Llama.from_pretrained(
+        repo_id=GGUF_MODEL_ID,
+        filename="*Q4_K_M.gguf",
+        n_ctx=2048,
+        verbose=False,
+    )
+    _tokenizer = None  # not used with llama_cpp
 
-    if backend == "llama_cpp":
-        from llama_cpp import Llama
-        _model = Llama.from_pretrained(
-            repo_id=GGUF_MODEL_ID,
-            filename="*Q4_K_M.gguf",
-        )
-        _tokenizer = None
-        return _model, _tokenizer
 
-    # Transformers backend
-    model_kwargs = {
-        "torch_dtype": torch.bfloat16,
-        "device_map": "auto",
-    }
+def _load_transformers():
+    """Load model via HuggingFace transformers."""
+    global _model, _tokenizer
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    _model = AutoModelForCausalLM.from_pretrained(MODEL_ID, **model_kwargs)
+    _model = AutoModelForCausalLM.from_pretrained(
+        MODEL_ID,
+        torch_dtype=torch.bfloat16,
+        device_map="auto",
+    )
     _tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
     _tokenizer.pad_token_id = _tokenizer.eos_token_id
 
-    return _model, _tokenizer
+
+def ensure_model_loaded():
+    """Lazy-load model on first request. Thread-safe."""
+    global _loaded
+    if _loaded:
+        return
+    with _lock:
+        if _loaded:
+            return
+        if BACKEND == "llama_cpp":
+            _load_llama_cpp()
+        else:
+            _load_transformers()
+        _loaded = True
 
 
-def generate_response(model, tokenizer, message, history, system_prompt, max_new_tokens=512):
-    """Generate a response using the loaded model."""
-    if tokenizer is None:
-        # llama_cpp backend
-        messages = [{"role": "system", "content": system_prompt}]
-        for h in history:
-            messages.append({"role": "user", "content": h.get("user", "")})
-            messages.append({"role": "assistant", "content": h.get("assistant", "")})
-        messages.append({"role": "user", "content": message})
+def generate_response(message: str, history: list, system_prompt: str, max_new_tokens: int = 512) -> str:
+    """
+    Generate a response.
 
-        response = model.create_chat_completion(
-            messages=messages,
-            max_tokens=max_new_tokens,
-            temperature=0.7,
-            top_p=0.95,
-        )
-        return response["choices"][0]["message"]["content"]
+    Args:
+        message: The user's current message.
+        history: List of dicts with 'role' and 'content' keys
+                 (Gradio 5 gr.ChatMessage format).
+        system_prompt: System prompt to use.
+        max_new_tokens: Max tokens to generate.
 
-    # Transformers backend
+    Returns:
+        The assistant's response text.
+    """
+    ensure_model_loaded()
+
+    # Build messages list from history + current message
     messages = [{"role": "system", "content": system_prompt}]
-    for h in history:
-        messages.append({"role": "user", "content": h.get("user", "")})
-        messages.append({"role": "assistant", "content": h.get("assistant", "")})
+
+    for turn in history:
+        role = turn.get("role", "user")
+        content = turn.get("content", "")
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+
     messages.append({"role": "user", "content": message})
 
-    inputs = tokenizer.apply_chat_template(
+    if BACKEND == "llama_cpp":
+        return _generate_llama_cpp(messages, max_new_tokens)
+    else:
+        return _generate_transformers(messages, max_new_tokens)
+
+
+def _generate_llama_cpp(messages: list, max_new_tokens: int) -> str:
+    """Generate response using llama.cpp backend."""
+    response = _model.create_chat_completion(
+        messages=messages,
+        max_tokens=max_new_tokens,
+        temperature=0.7,
+        top_p=0.95,
+    )
+    return response["choices"][0]["message"]["content"]
+
+
+def _generate_transformers(messages: list, max_new_tokens: int) -> str:
+    """Generate response using transformers backend."""
+    import torch
+
+    inputs = _tokenizer.apply_chat_template(
         messages,
         tokenize=True,
         add_generation_prompt=True,
         return_tensors="pt",
-    ).to(model.device)
+    ).to(_model.device)
 
-    outputs = model.generate(
+    outputs = _model.generate(
         inputs,
         max_new_tokens=max_new_tokens,
         temperature=0.7,
@@ -82,5 +126,8 @@ def generate_response(model, tokenizer, message, history, system_prompt, max_new
         do_sample=True,
     )
 
-    response = tokenizer.decode(outputs[0][inputs.shape[-1]:], skip_special_tokens=True)
+    response = _tokenizer.decode(
+        outputs[0][inputs.shape[-1]:],
+        skip_special_tokens=True,
+    )
     return response
