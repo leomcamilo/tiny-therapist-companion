@@ -4,14 +4,44 @@ Build Small Hackathon 2026
 
 Uses Gradio 5 Blocks API with llama.cpp backend priority.
 Custom CSS for Off-Brand bonus quest.
+Agent tracing for Sharing is Caring bonus quest.
 """
 
 import os
+import json
 import gradio as gr
 from model.inference import generate_response
 from model.prompts import SYSTEM_PROMPT, GRATITUDE_PROMPT, JOURNAL_PROMPT
 
 BACKEND = os.environ.get("BACKEND", "llama_cpp")
+
+# ─── Agent Trace Logging — Sharing is Caring bonus quest ──────────────────────
+
+TRACE_DIR = os.environ.get("TRACE_DIR", "/tmp/tiny-therapist-traces")
+TRACE_ENABLED = os.environ.get("TRACE_ENABLED", "true").lower() == "true"
+
+
+def log_trace(user_msg: str, bot_response: str, mode: str, metadata: dict | None = None):
+    """Log an agent trace to a JSONL file for sharing on HuggingFace Hub."""
+    if not TRACE_ENABLED:
+        return
+
+    import time
+    trace = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "mode": mode,
+        "user_message": user_msg,
+        "bot_response": bot_response,
+        "backend": BACKEND,
+        "model": os.environ.get("GGUF_MODEL_ID", os.environ.get("MODEL_ID", "nvidia/Llama-3.1-Nemotron-Nano-4B-v1.1")),
+        "metadata": metadata or {},
+    }
+
+    os.makedirs(TRACE_DIR, exist_ok=True)
+    trace_file = os.path.join(TRACE_DIR, "traces.jsonl")
+    with open(trace_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(trace, ensure_ascii=False) + "\n")
+
 
 # ─── Custom CSS — Off-Brand bonus quest ─────────────────────────────────────
 
@@ -140,6 +170,17 @@ body {
   color: #c62828;
 }
 
+/* ── Trace toggle ────────────────────────────────────────────── */
+.trace-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0.25rem 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
 /* ── Footer ───────────────────────────────────────────────────── */
 .app-footer {
   text-align: center;
@@ -198,6 +239,8 @@ def respond(message: str, history: list, mode: str):
         history=history,
         system_prompt=system_prompt,
     )
+    # Log agent trace for Sharing is Caring bonus quest
+    log_trace(message, response, mode, metadata={"system_prompt_mode": mode})
     return response
 
 
@@ -265,35 +308,31 @@ with gr.Blocks(
         send_btn = gr.Button("Send", variant="primary", scale=1)
         clear_btn = gr.Button("Clear", variant="secondary", scale=1)
 
+    # Agent trace toggle — Sharing is Caring bonus quest
+    trace_checkbox = gr.Checkbox(
+        value=TRACE_ENABLED,
+        label="📡 Share agent traces (anonymized, for research)",
+        visible=True,
+        elem_classes=["trace-toggle"],
+    )
+
     # Footer
     gr.HTML(
         """
         <div class="app-footer">
-            Built for <strong>Build Small Hackathon 2026</strong> · Powered by Nemotron-Nano-4B
+            Built for <strong>Build Small Hackathon 2026</strong> · Powered by Nemotron-Nano-4B<br>
+            📡 Agent traces shared via <a href="https://huggingface.co/spaces/build-small-hackathon/field-guide" target="_blank">Sharing is Caring</a>
         </div>
         """
     )
 
     # ─── Event handlers ──────────────────────────────────────────────
 
-    def submit_message(user_msg: str, chat_history: list):
-        """Process a user message and return updated history."""
-        if not user_msg.strip():
-            return "", chat_history or []
-
-        chat_history = chat_history or []
-        # Append user message
-        chat_history.append({"role": "user", "content": user_msg})
-
-        # Generate response
-        mode_value = mode.value if hasattr(mode, "value") else "Talk"
-        # Re-read mode from the radio component isn't directly accessible here,
-        # so we pass it via a wrapper
-        return "", chat_history  # will be handled by .then()
-
-    # Chain: user msg → clear input → generate → append response
-    def chat_fn(user_msg: str, chat_history: list, mode_val: str):
+    def chat_fn(user_msg: str, chat_history: list, mode_val: str, trace_on: bool):
         """Full chat cycle: add user msg, generate, add bot response."""
+        global TRACE_ENABLED
+        TRACE_ENABLED = trace_on
+
         if not user_msg.strip():
             return chat_history or [], ""
 
@@ -310,13 +349,13 @@ with gr.Blocks(
 
     send_btn.click(
         fn=chat_fn,
-        inputs=[msg_input, chatbot, mode],
+        inputs=[msg_input, chatbot, mode, trace_checkbox],
         outputs=[chatbot, msg_input],
     )
 
     msg_input.submit(
         fn=chat_fn,
-        inputs=[msg_input, chatbot, mode],
+        inputs=[msg_input, chatbot, mode, trace_checkbox],
         outputs=[chatbot, msg_input],
     )
 

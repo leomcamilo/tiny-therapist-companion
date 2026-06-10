@@ -162,21 +162,40 @@ huggingface-cli login
 
 ---
 
-## 🏆 Bonus Quests
-
-| Quest | How we earned it |
-|---|---|
+| 📡 **Sharing is Caring** | Agent traces logged to JSONL and uploadable to HF Hub via `scripts/upload_traces.py` |
 | 🦙 **Llama Champion** | Model runs via `llama.cpp` / `llama-cpp-python` with GGUF quantisation |
-| 🎨 **Off-Brand** | Custom Gradio Soft theme (violet + pink + Inter font), not the default look |
+| 🎨 **Off-Brand** | Custom Gradio Soft theme (violet + pink + Nunito font), breathing animation, pill selectors |
 | 🔌 **Off the Grid** | Zero cloud API calls — model downloads once, inference is 100% local |
+| 📓 **Field Notes** | This README serves as the field notes / blog post about what we built |
 
 ---
+
+## 📡 Agent Traces — Sharing is Caring
+
+Every conversation is optionally logged to a local JSONL file (with user opt-in via checkbox). Traces include:
+
+- Mode (Talk / Gratitude / Journal)
+- Timestamp
+- Backend used (llama_cpp / transformers)
+- Anonymized message exchange
+
+To upload traces to HuggingFace Hub:
+
+```bash
+# Dry run first
+python scripts/upload_traces.py --dry-run
+
+# Upload for real
+python scripts/upload_traces.py --repo-id your-username/tiny-therapist-traces
+```
+
+This earns the **📡 Sharing is Caring** bonus quest.
 
 ## 📦 Project Structure
 
 ```
 tiny-therapist-companion/
-├── app.py                  # Gradio application
+├── app.py                  # Gradio application (with agent tracing)
 ├── model/
 │   ├── __init__.py
 │   ├── inference.py        # Model loading + dual-backend inference
@@ -185,6 +204,8 @@ tiny-therapist-companion/
 │   ├── config.yaml         # Training hyper-parameters
 │   ├── train.py             # Fine-tuning script
 │   └── dataset/             # Training data (JSONL)
+├── scripts/
+│   └── upload_traces.py     # Upload agent traces to HF Hub
 ├── requirements.txt        # Python dependencies
 ├── Dockerfile               # HF Spaces Docker build
 ├── .env.example             # Environment variable template
