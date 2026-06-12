@@ -155,6 +155,43 @@ This satisfies the Sharing is Caring bonus quest — making agent behavior trans
 
 ---
 
+## Day 7 (Jun 12): Polish & UX Improvements
+
+### System prompts overhaul
+Rewrote all three prompts with more specific, directive language optimized for 4B models:
+
+**Before:** Generic "Rules:" lists with vague guidance like "Listen, reflect, ask open-ended questions"
+**After:** Each prompt now includes:
+- A clear first-action directive (e.g., "Listen first, then reflect back what you heard")
+- Explicit behavioral constraints ("Ask ONE open-ended question per response")
+- Response length guidance ("2-4 sentences" instead of "under 150 words")
+- Specific crisis intervention phrasing ("I care about you. Please reach out to...")
+- Mode-specific opening questions (Gratitude: "What's one small thing that went well today?")
+
+Key insight: 4B models need **explicit step-by-step instructions** rather than abstract rules. "Ask ONE follow-up question per response" > "Ask one question at a time."
+
+### UI/UX Polish (Off-Brand bonus)
+
+1. **Welcome suggestions** -- 4 clickable prompt buttons that fill the input box. Reduces friction for first-time users.
+
+2. **Mode-aware placeholders** -- Input box placeholder changes based on selected mode.
+
+3. **Typing indicator CSS** -- Pulsing dot animation ready for streaming.
+
+4. **Enhanced CSS** -- Hover effects, custom scrollbar, backdrop-filter blur, prefers-reduced-motion, better mobile breakpoints, pill buttons, container max-width, subtle shadows.
+
+5. **Accessibility** -- prefers-reduced-motion disables all animations.
+
+### Dockerfile optimization
+- Multi-stage build: builder + runtime. Cuts ~300MB from final image.
+- Added HEALTHCHECK for HF Spaces.
+- Runtime only needs libopenblas0.
+
+### Bug fixes
+- bubble_full_width=False in Chatbot for readability on wider screens
+
+---
+
 ## Try It
 
 ```bash
